@@ -38,7 +38,8 @@ class MainViewModel : ViewModel() {
 
     init {
         try {
-            liteRTEngine.loadModel("dummy_model_path.tflite")
+            // Load the model that we pushed to the device via ADB
+            liteRTEngine.loadModel("/data/local/tmp/gemma.tflite")
         } catch (e: Exception) {
             // Ignored for MVP setup
         }

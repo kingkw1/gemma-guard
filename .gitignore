@@ -60,3 +60,8 @@ obj/
 
 # MacOS
 .DS_Store
+
+# Large AI Models (DO NOT COMMIT)
+*.tflite
+gemma.tflite
+*.task
