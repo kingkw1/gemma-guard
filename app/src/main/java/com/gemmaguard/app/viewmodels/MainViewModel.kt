@@ -15,6 +15,7 @@ sealed class UiState {
     object MediaSelection : UiState()
     object Processing : UiState()
     data class HitlDashboard(val items: List<HitlItem>) : UiState()
+    data class Error(val message: String) : UiState()
 }
 
 data class HitlItem(
@@ -34,6 +35,14 @@ class MainViewModel : ViewModel() {
     val inferenceMetrics: StateFlow<InferenceMetrics?> = _inferenceMetrics.asStateFlow()
     
     private val liteRTEngine = LiteRTEngine()
+
+    init {
+        try {
+            liteRTEngine.loadModel("dummy_model_path.tflite")
+        } catch (e: Exception) {
+            // Ignored for MVP setup
+        }
+    }
 
     val defaultProfiles = listOf(
         UserProfile("p1", "Age 4 (Strict)", 4, ToleranceConfig(0, 0, 0, true)),
@@ -67,7 +76,7 @@ class MainViewModel : ViewModel() {
                 }
                 _uiState.value = UiState.HitlDashboard(hitlItems)
             } catch (e: Exception) {
-                // error handling
+                _uiState.value = UiState.Error(e.message ?: "Unknown error occurred during processing.")
             }
         }
     }
@@ -80,6 +89,11 @@ class MainViewModel : ViewModel() {
             }
             _uiState.value = UiState.HitlDashboard(updatedItems)
         }
+    }
+
+    fun resetToProfileSelection() {
+        _uiState.value = UiState.ProfileSelection
+        _selectedProfile.value = null
     }
 
     override fun onCleared() {
