@@ -13,7 +13,8 @@ Instead of just muting flagged audio—which ruins the narrative pacing of a mov
 When generating specifications or writing code for this workspace, all agents MUST adhere to the following rules:
 1. **Privacy Absolute:** No code may utilize external cloud APIs (no Gemini, no OpenAI, no network telemetry). Execution must be 100% local.
 2. **Track Compliance:** The architecture must prioritize the deployment of the Gemma 4 E2B LiteRT model on Android. Code must reflect C++/Kotlin bindings for local inference.
-3. **The HITL Interface:** The UI must be a Human-in-the-Loop (HITL) dashboard. The AI does not make the final cut; it generates a structured JSON manifest of flagged timestamps with its reasoning, which the human user reviews and approves before FFmpeg execution.
+3. **The HITL Interface:** The UI must be a Human-in-the-Loop (HITL) dashboard. The AI does not make the final cut; it generates a structured JSON manifest of flagged timestamps with its reasoning, which the human user reviews and approves before FFmpeg execution. 
+    * **Contextual Previews:** The HITL dashboard must allow the user to tap any flagged item to instantly play the corresponding video clip (using the timestamp_start and timestamp_end from the JSON) in a localized video player before they make their approval decision.
 4. **Demo Readiness:** The app will ship with 3 pre-loaded media clips in the `assets` folder to ensure a frictionless, offline live demo for the judges, alongside a "Load Local File" intent. 
 
 ## Reference Material
