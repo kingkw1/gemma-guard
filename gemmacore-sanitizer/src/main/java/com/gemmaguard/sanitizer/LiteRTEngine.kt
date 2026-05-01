@@ -18,10 +18,15 @@ class LiteRTEngine(private val context: Context) {
     fun analyze(transcript: String): Pair<String, EngineMetrics> {
         val llm = llmInference ?: throw IllegalStateException("Model not loaded")
         val prompt = """
-            <start_of_turn>user
-            Find profanity in transcript. Format: CSV (start_ms,end_ms,word,category,severity,reasoning). If clean, output EXACTLY AND ONLY: CLEAN
-            Transcript: $transcript<end_of_turn>
-            <start_of_turn>model
+            Analyze the following transcript for profanity.
+            Output ONLY CSV format. Columns: start_ms,end_ms,word,category,severity,reasoning
+            Example:
+            0,5000,bad,Profanity,5,explicit
+            
+            If clean, output exactly: CLEAN
+            
+            Transcript: 
+            $transcript
         """.trimIndent()
         
         val startTime = System.currentTimeMillis()
