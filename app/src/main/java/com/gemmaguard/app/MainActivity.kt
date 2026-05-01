@@ -30,6 +30,7 @@ class MainActivity : ComponentActivity() {
             MaterialTheme(colorScheme = darkColorScheme()) {
                 Surface(modifier = Modifier.fillMaxSize()) {
                     val state by viewModel.uiState.collectAsState()
+                    val metrics by viewModel.inferenceMetrics.collectAsState()
                     when (val s = state) {
                         is UiState.ProfileSelection -> {
                             com.gemmaguard.app.ui.ProfileSelectionScreen(
@@ -53,6 +54,7 @@ class MainActivity : ComponentActivity() {
                         is UiState.HitlDashboard -> {
                             HitlDashboardScreen(
                                 items = s.items,
+                                metrics = metrics,
                                 onToggle = { viewModel.toggleCut(it) },
                                 onApprove = { /* Execute FFmpeg */ }
                             )

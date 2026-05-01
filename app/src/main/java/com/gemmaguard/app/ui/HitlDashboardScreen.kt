@@ -15,11 +15,13 @@ import androidx.media3.common.MediaItem
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.ui.PlayerView
 import androidx.compose.ui.viewinterop.AndroidView
+import com.gemmaguard.app.models.InferenceMetrics
 import com.gemmaguard.app.viewmodels.HitlItem
 
 @Composable
 fun HitlDashboardScreen(
     items: List<HitlItem>,
+    metrics: InferenceMetrics?,
     onToggle: (HitlItem) -> Unit,
     onApprove: () -> Unit
 ) {
@@ -27,6 +29,18 @@ fun HitlDashboardScreen(
     
     Column(modifier = Modifier.fillMaxSize().padding(16.dp)) {
         Text("HITL Review Dashboard", style = MaterialTheme.typography.headlineMedium)
+        
+        metrics?.let {
+            Card(modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.secondaryContainer)) {
+                Column(modifier = Modifier.padding(12.dp)) {
+                    Text("Inference Metrics", style = MaterialTheme.typography.titleMedium)
+                    Text("Time to First Token: ${it.timeToFirstTokenMs} ms")
+                    Text("Total Time: ${it.totalInferenceTimeMs} ms")
+                    Text("Speed: ${"%.2f".format(it.tokensPerSecond)} tok/sec")
+                    Text("RAM Usage: ${it.memoryUsageMb} MB")
+                }
+            }
+        }
         
         selectedPreview?.let { item ->
             ContextualPreviewPlayer(item)

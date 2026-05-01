@@ -4,6 +4,7 @@
     <application
         android:allowBackup="true"
         android:label="GemmaGuard"
+        android:largeHeap="true"
         android:supportsRtl="true">
         <activity
             android:name=".MainActivity"
