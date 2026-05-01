@@ -3,7 +3,7 @@
 ## Phase 1: Core AI Inference & Feasibility Validation (PRIORITY 1)
 *Goal: Prove that the S23 can load and execute Gemma 2B LiteRT on a transcript chunk under 15 seconds without OOM.*
 - [x] **Procure Model**: Download the `gemma-1.1-2b-it-cpu-int4` or `gemma-2-2b-it-cpu-int4` (4-bit quantized) LiteRT `.tflite` model.
-- [ ] **Load Model**: Push `.tflite` model to the Android device and implement the `LiteRTEngine.loadModel` C++ JNI bridge using the Google AI Edge / LiteRT C++ API.
+- [x] **Load Model**: Push `.tflite` model to the Android device and implement model loading using the official `com.google.mediapipe:tasks-genai` Kotlin API.
 - [ ] **Benchmark Inference**: Feed a 30-second `.vtt` transcript into the model on the S23.
 - [ ] **Validation Metric**: Output time-to-first-token, generation speed (tokens/sec), and RAM usage. 
 - [ ] **Prompt Engineering**: Refine the system prompt to consistently output the required JSON array format without hallucinating markdown code blocks.

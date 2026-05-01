@@ -1,6 +1,7 @@
 package com.gemmaguard.app.viewmodels
 
-import androidx.lifecycle.ViewModel
+import android.app.Application
+import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.gemmaguard.app.models.*
 import com.gemmaguard.sanitizer.LiteRTEngine
@@ -23,7 +24,7 @@ data class HitlItem(
     var isCheckedForCut: Boolean
 )
 
-class MainViewModel : ViewModel() {
+class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     private val _uiState = MutableStateFlow<UiState>(UiState.ProfileSelection)
     val uiState: StateFlow<UiState> = _uiState.asStateFlow()
@@ -34,7 +35,7 @@ class MainViewModel : ViewModel() {
     private val _inferenceMetrics = MutableStateFlow<InferenceMetrics?>(null)
     val inferenceMetrics: StateFlow<InferenceMetrics?> = _inferenceMetrics.asStateFlow()
     
-    private val liteRTEngine = LiteRTEngine()
+    private val liteRTEngine = LiteRTEngine(application)
 
     init {
         try {

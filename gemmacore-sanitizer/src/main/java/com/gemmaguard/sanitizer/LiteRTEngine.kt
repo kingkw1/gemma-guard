@@ -1,29 +1,31 @@
 package com.gemmaguard.sanitizer
 
-class LiteRTEngine {
-    private var engineHandle: Long = 0
+import android.content.Context
+import com.google.mediapipe.tasks.genai.llminference.LlmInference
 
-    init {
-        System.loadLibrary("gemmacore_sanitizer")
-    }
+class LiteRTEngine(private val context: Context) {
+    private var llmInference: LlmInference? = null
 
     fun loadModel(modelPath: String) {
-        engineHandle = createEngine(modelPath)
+        val options = LlmInference.LlmInferenceOptions.builder()
+            .setModelPath(modelPath)
+            .setMaxTokens(1024)
+            .build()
+        llmInference = LlmInference.createFromOptions(context, options)
     }
 
     fun analyze(transcript: String): String {
-        if (engineHandle == 0L) throw IllegalStateException("Model not loaded")
-        return analyzeTranscript(engineHandle, transcript)
+        val llm = llmInference ?: throw IllegalStateException("Model not loaded")
+        val prompt = """
+            Analyze the following transcript and flag inappropriate elements as a JSON array of FlaggedItem objects (category, severity, reasoning).
+            Transcript:
+            $transcript
+        """.trimIndent()
+        return llm.generateResponse(prompt)
     }
 
     fun destroy() {
-        if (engineHandle != 0L) {
-            destroyEngine(engineHandle)
-            engineHandle = 0
-        }
+        llmInference?.close()
+        llmInference = null
     }
-
-    private external fun createEngine(modelPath: String): Long
-    private external fun analyzeTranscript(engineHandle: Long, transcript: String): String
-    private external fun destroyEngine(engineHandle: Long)
 }
