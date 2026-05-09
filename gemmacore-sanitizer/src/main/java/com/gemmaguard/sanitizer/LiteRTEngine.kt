@@ -10,28 +10,28 @@ class LiteRTEngine(private val context: Context) {
     fun loadModel(modelPath: String) {
         val options = LlmInference.LlmInferenceOptions.builder()
             .setModelPath(modelPath)
-            .setMaxTokens(256)
+            .setMaxTokens(96)
             .build()
         llmInference = LlmInference.createFromOptions(context, options)
     }
 
     fun analyze(transcript: String): Pair<String, EngineMetrics> {
         val llm = llmInference ?: throw IllegalStateException("Model not loaded")
-        val prompt = """
-            Analyze the following transcript for profanity.
-            Output ONLY CSV format. Columns: start_ms,end_ms,word,category,severity,reasoning
-            Example:
-            0,5000,bad,Profanity,5,explicit
-            
-            If clean, output exactly: CLEAN
-            
-            Transcript: 
-            $transcript
-        """.trimIndent()
+        
+        System.gc()
+        
+        val prompt = "Analyze this: <start_of_turn>user\n" +
+                "JSON ONLY. One-Shot: Damn -> [{\"timestamp_start\":0,\"timestamp_end\":2000,\"text\":\"damn\",\"category\":\"Profanity\",\"severity\":2,\"reasoning\":\"Mild\"}]\n" +
+                "Input: $transcript<end_of_turn>\n" +
+                "<start_of_turn>model\n["
         
         val startTime = System.currentTimeMillis()
-        val result = llm.generateResponse(prompt)
+        var result = llm.generateResponse(prompt)
         val endTime = System.currentTimeMillis()
+        
+        if (!result.trim().startsWith("[")) {
+            result = "[" + result
+        }
         
         val totalTimeMs = endTime - startTime
         val estimatedTokens = result.length / 4f
