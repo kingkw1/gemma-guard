@@ -6,7 +6,7 @@
 - [x] **Load Model**: Push `.tflite` model to the Android device and implement model loading using the official `com.google.mediapipe:tasks-genai` Kotlin API.
 - [x] **Benchmark Inference**: Feed a 30-second `.vtt` transcript into the model on the S23.
 - [x] **Validation Metric**: Output time-to-first-token, generation speed (tokens/sec), and RAM usage. 
-- [x] **Prompt Engineering**: Refine the system prompt to consistently output the required JSON array format without hallucinating markdown code blocks.
+- [x] **Neuro-Symbolic Architecture Pivot**: Shift from LLM-generated JSON to minimal piped string (`word|category|severity`) for deterministic Kotlin parsing, drastically reducing inference latency.
 
 ## Phase 2: FFmpeg Audio Processing Pipeline
 *Goal: Successfully splice out bad words and overdub comedic TTS without cloud APIs.*
@@ -33,5 +33,5 @@
 
 ## Phase 5: Automated Testing & Demo Preparation
 *Goal: Ensure the demo runs flawlessly offline for the judges.*
-- [ ] **Write Unit Tests**: Test the JSON parsing logic in `MainViewModel` for edge cases (e.g., Gemma outputs malformed JSON).
+- [ ] **Write Unit Tests**: Test the deterministic string parsing logic in `MainViewModel` and `VttParser` for edge cases.
 - [ ] **Airplane Mode Verification**: Conduct a full end-to-end run on the S23 with WiFi/Cellular completely disabled.

@@ -45,11 +45,31 @@ class LiteRTBenchmarkTest {
         
         val timeInMillis = measureTimeMillis {
             val (result, _) = engine.analyze(transcript)
-            output = result
+            output = result.substringBefore("</end_of_turn>").substringBefore("<eos>").trim()
         }
 
         Log.i("[GEMMAGUARD_BENCHMARK]", "Execution Time: $timeInMillis ms")
         Log.i("[GEMMAGUARD_BENCHMARK]", "Raw Output: $output")
+        
+        assert(timeInMillis < 15000) { "Inference took too long: $timeInMillis ms" }
+        assert(output.contains("hell|Profanity", ignoreCase = true)) { "Unexpected output: $output" }
+    }
+    
+    @Test
+    fun benchmarkInferenceClean() {
+        val transcript = "This is a completely normal and clean sentence."
+        var output = ""
+        
+        val timeInMillis = measureTimeMillis {
+            val (result, _) = engine.analyze(transcript)
+            output = result.substringBefore("</end_of_turn>").substringBefore("<eos>").trim()
+        }
+
+        Log.i("[GEMMAGUARD_BENCHMARK]", "Execution Time: $timeInMillis ms")
+        Log.i("[GEMMAGUARD_BENCHMARK]", "Raw Output: $output")
+        
+        assert(timeInMillis < 15000) { "Inference took too long: $timeInMillis ms" }
+        assert(output.contains("CLEAN", ignoreCase = true)) { "Expected CLEAN, but got: $output" }
     }
 
     @After

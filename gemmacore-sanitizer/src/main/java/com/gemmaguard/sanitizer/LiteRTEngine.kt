@@ -10,7 +10,7 @@ class LiteRTEngine(private val context: Context) {
     fun loadModel(modelPath: String) {
         val options = LlmInference.LlmInferenceOptions.builder()
             .setModelPath(modelPath)
-            .setMaxTokens(96)
+            .setMaxTokens(128)
             .build()
         llmInference = LlmInference.createFromOptions(context, options)
     }
@@ -18,21 +18,17 @@ class LiteRTEngine(private val context: Context) {
     fun analyze(transcript: String): Pair<String, EngineMetrics> {
         val llm = llmInference ?: throw IllegalStateException("Model not loaded")
         
-        System.gc()
-        
-        val prompt = "Analyze this: <start_of_turn>user\n" +
-                "JSON ONLY. One-Shot: Damn -> [{\"timestamp_start\":0,\"timestamp_end\":2000,\"text\":\"damn\",\"category\":\"Profanity\",\"severity\":2,\"reasoning\":\"Mild\"}]\n" +
-                "Input: $transcript<end_of_turn>\n" +
-                "<start_of_turn>model\n["
+        val prompt = "<start_of_turn>user\n" +
+                "Extract content risks. Reply ONLY with this format: word|category|severity. If clean, reply exactly: CLEAN. DO NOT EXPLAIN. DO NOT THINK.\n" +
+                "Example: damn hell|Profanity|3\n" +
+                "Text: $transcript<end_of_turn>\n" +
+                "<start_of_turn>model\n"
         
         val startTime = System.currentTimeMillis()
-        var result = llm.generateResponse(prompt)
+        val result = llm.generateResponse(prompt)
         val endTime = System.currentTimeMillis()
-        
-        if (!result.trim().startsWith("[")) {
-            result = "[" + result
-        }
-        
+
+
         val totalTimeMs = endTime - startTime
         val estimatedTokens = result.length / 4f
         val tps = if (totalTimeMs > 0) (estimatedTokens / (totalTimeMs / 1000f)) else 0f
