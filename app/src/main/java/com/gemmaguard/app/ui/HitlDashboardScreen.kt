@@ -75,7 +75,7 @@ fun ContextualPreviewPlayer(item: HitlItem) {
         val mediaItem = MediaItem.fromUri("file:///android_asset/borderline_mild.mp4")
         exoPlayer.setMediaItem(mediaItem)
         exoPlayer.prepare()
-        exoPlayer.seekTo(item.flaggedData.timestamp_start)
+        exoPlayer.seekTo(item.flaggedData.timestampStartMs)
         exoPlayer.play()
         
         onDispose {

@@ -13,13 +13,16 @@ import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
 import androidx.compose.foundation.layout.*
 import androidx.compose.material3.Button
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Text
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.unit.dp
 import com.gemmaguard.app.ui.HitlDashboardScreen
 import com.gemmaguard.app.ui.MediaSelectionScreen
 import com.gemmaguard.app.viewmodels.MainViewModel
+import com.gemmaguard.app.viewmodels.TranscriptChunk
 import com.gemmaguard.app.viewmodels.UiState
+import com.gemmaguard.sanitizer.VttParser
 
 class MainActivity : ComponentActivity() {
     private val viewModel: MainViewModel by viewModels()
@@ -41,14 +44,18 @@ class MainActivity : ComponentActivity() {
                         is UiState.MediaSelection -> {
                             MediaSelectionScreen(
                                 onMediaSelected = { assetBaseName ->
-                                    val vttContent = loadVttFromAssets(assetBaseName)
-                                    viewModel.processMedia(vttContent)
+                                    val chunks = loadTranscriptChunksFromAssets(assetBaseName)
+                                    viewModel.processMedia(chunks)
                                 }
                             )
                         }
                         is UiState.Processing -> {
                             Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                                Text("Processing transcript via LiteRT...")
+                                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                    CircularProgressIndicator()
+                                    Spacer(modifier = Modifier.height(16.dp))
+                                    Text("Analyzing chunk ${s.currentChunk} of ${s.totalChunks}...")
+                                }
                             }
                         }
                         is UiState.HitlDashboard -> {
@@ -56,7 +63,7 @@ class MainActivity : ComponentActivity() {
                                 items = s.items,
                                 metrics = metrics,
                                 onToggle = { viewModel.toggleCut(it) },
-                                onApprove = { /* Execute FFmpeg */ }
+                                onApprove = { /* Execute FFmpeg — Phase 2 */ }
                             )
                         }
                         is UiState.Error -> {
@@ -78,11 +85,24 @@ class MainActivity : ComponentActivity() {
         }
     }
 
-    private fun loadVttFromAssets(baseName: String): String {
+    /**
+     * Loads a .vtt asset and converts it to TranscriptChunks for the neuro-symbolic pipeline.
+     * VttParser is retained for pre-loaded demo assets and BYOF .vtt file support.
+     * For dynamic media (Phase 3), SpeechToTextEngine will produce these chunks directly.
+     */
+    private fun loadTranscriptChunksFromAssets(baseName: String): List<TranscriptChunk> {
         return try {
-            assets.open("$baseName.vtt").bufferedReader().use { it.readText() }
+            val vttContent = assets.open("$baseName.vtt").bufferedReader().use { it.readText() }
+            val vttBlocks = VttParser.parse(vttContent)
+            vttBlocks.map { block ->
+                TranscriptChunk(
+                    startMs = block.startMs,
+                    endMs = block.endMs,
+                    text = block.text
+                )
+            }
         } catch (e: Exception) {
-            "Error loading transcript"
+            emptyList()
         }
     }
 }

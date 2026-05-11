@@ -1,7 +1,5 @@
 package com.gemmaguard.app.models
 
-import kotlinx.serialization.Serializable
-
 data class UserProfile(
     val id: String,
     val name: String,
@@ -23,10 +21,9 @@ data class InferenceMetrics(
     val memoryUsageMb: Int
 )
 
-@Serializable
 data class FlaggedItem(
-    val timestamp_start: Long,
-    val timestamp_end: Long,
+    val timestampStartMs: Long,
+    val timestampEndMs: Long,
     val text: String,
     val category: String,
     val severity: Int,

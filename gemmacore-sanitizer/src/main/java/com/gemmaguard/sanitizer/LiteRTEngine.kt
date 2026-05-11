@@ -25,9 +25,11 @@ class LiteRTEngine(private val context: Context) {
                 "<start_of_turn>model\n"
         
         val startTime = System.currentTimeMillis()
-        val result = llm.generateResponse(prompt)
+        val rawResult = llm.generateResponse(prompt)
         val endTime = System.currentTimeMillis()
 
+        // Strip the <end_of_turn> token that Gemma appends to every response
+        val result = rawResult.substringBefore("<end_of_turn>").trim()
 
         val totalTimeMs = endTime - startTime
         val estimatedTokens = result.length / 4f

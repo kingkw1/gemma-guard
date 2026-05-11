@@ -11,12 +11,11 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
-import kotlinx.serialization.json.Json
 
 sealed class UiState {
     object ProfileSelection : UiState()
     object MediaSelection : UiState()
-    object Processing : UiState()
+    data class Processing(val currentChunk: Int = 0, val totalChunks: Int = 0) : UiState()
     data class HitlDashboard(val items: List<HitlItem>) : UiState()
     data class Error(val message: String) : UiState()
 }
@@ -26,7 +25,23 @@ data class HitlItem(
     var isCheckedForCut: Boolean
 )
 
+/**
+ * Represents a timestamped text chunk produced by the STT engine.
+ * The STT engine is the sole source of truth for all timestamp data.
+ */
+data class TranscriptChunk(
+    val startMs: Long,
+    val endMs: Long,
+    val text: String
+)
+
 class MainViewModel(application: Application) : AndroidViewModel(application) {
+
+    companion object {
+        private const val TAG = "GemmaGuard"
+        private val VALID_CATEGORIES = setOf("Profanity", "Violence", "Thematic", "Mean Language")
+        private val SEVERITY_RANGE = 1..5
+    }
 
     private val _uiState = MutableStateFlow<UiState>(UiState.ProfileSelection)
     val uiState: StateFlow<UiState> = _uiState.asStateFlow()
@@ -41,14 +56,14 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     init {
         try {
-            Log.d("GemmaGuard", "Initializing LiteRT Engine and loading model...")
+            Log.d(TAG, "Initializing LiteRT Engine and loading model...")
             // Load the model from the app's external files directory (no permissions required)
             val modelPath = application.getExternalFilesDir(null)?.absolutePath + "/gemma-4-E2B-it.litertlm"
-            Log.d("GemmaGuard", "Model path resolved to: $modelPath")
+            Log.d(TAG, "Model path resolved to: $modelPath")
             liteRTEngine.loadModel(modelPath)
-            Log.d("GemmaGuard", "Model successfully loaded into memory!")
+            Log.d(TAG, "Model successfully loaded into memory!")
         } catch (e: Exception) {
-            Log.e("GemmaGuard", "Failed to load model", e)
+            Log.e(TAG, "Failed to load model", e)
             _uiState.value = UiState.Error("Failed to load model: ${e.message}")
         }
     }
@@ -64,49 +79,58 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         _uiState.value = UiState.MediaSelection
     }
 
-    fun processMedia(vttContent: String) {
-        Log.d("GemmaGuard", "Starting media processing. Launching IO coroutine...")
-        _uiState.value = UiState.Processing
+    /**
+     * Processes media by running each STT-generated transcript chunk through Gemma sequentially.
+     *
+     * Architecture (Neuro-Symbolic Pipeline):
+     * 1. STT engine provides [TranscriptChunk] list (text + timestamps).
+     * 2. Each chunk is fed synchronously to Gemma via [LiteRTEngine.analyze].
+     * 3. Gemma returns a hyper-minimal piped string: "word|category|severity" or "CLEAN".
+     * 4. Kotlin merges the LLM semantic output with the STT-provided timestamps
+     *    to construct [FlaggedItem] state objects.
+     * 5. Items are auto-flagged against the active [ToleranceConfig].
+     *
+     * CRITICAL: Inference calls are sequential (synchronous generateResponse).
+     * DO NOT use generateResponseAsync() — it orphans native XNNPACK threads → OOM.
+     */
+    fun processMedia(chunks: List<TranscriptChunk>) {
+        Log.d(TAG, "Starting media processing. ${chunks.size} chunks to analyze.")
+        _uiState.value = UiState.Processing(currentChunk = 0, totalChunks = chunks.size)
+
         viewModelScope.launch(Dispatchers.IO) {
             try {
-                Log.d("GemmaGuard", "Calling liteRTEngine.analyze() with transcript of length ${vttContent.length}")
-                val (jsonResult, engineMetrics) = liteRTEngine.analyze(vttContent)
-                Log.d("GemmaGuard", "Inference complete! Raw result: $jsonResult")
-                
-                _inferenceMetrics.value = InferenceMetrics(
-                    timeToFirstTokenMs = engineMetrics.timeToFirstTokenMs,
-                    totalInferenceTimeMs = engineMetrics.totalInferenceTimeMs,
-                    tokensPerSecond = engineMetrics.tokensPerSecond,
-                    memoryUsageMb = engineMetrics.memoryUsageMb
-                )
-                
-                val items = mutableListOf<FlaggedItem>()
-                val lines = jsonResult.lines()
-                for (line in lines) {
-                    val cleanLine = line.trim()
-                    if (cleanLine.contains("CLEAN", ignoreCase = true) || cleanLine.startsWith("start_ms") || cleanLine.isEmpty()) continue
-                    
-                    val parts = cleanLine.split(",")
-                    if (parts.size >= 6) {
-                        try {
-                            items.add(
-                                FlaggedItem(
-                                    timestamp_start = parts[0].toDoubleOrNull()?.toLong() ?: 0L,
-                                    timestamp_end = parts[1].toDoubleOrNull()?.toLong() ?: 0L,
-                                    text = parts[2].trim('"'),
-                                    category = parts[3].trim('"'),
-                                    severity = parts[4].toIntOrNull() ?: 5,
-                                    reasoning = parts[5].trim('"')
-                                )
-                            )
-                        } catch (e: Exception) {
-                            Log.w("GemmaGuard", "Failed to parse CSV line: ${cleanLine}")
-                        }
+                val allFlaggedItems = mutableListOf<FlaggedItem>()
+
+                for ((index, chunk) in chunks.withIndex()) {
+                    _uiState.value = UiState.Processing(
+                        currentChunk = index + 1,
+                        totalChunks = chunks.size
+                    )
+
+                    Log.d(TAG, "Analyzing chunk ${index + 1}/${chunks.size}: \"${chunk.text.take(50)}...\"")
+                    val (pipedResult, engineMetrics) = liteRTEngine.analyze(chunk.text)
+                    Log.d(TAG, "Chunk ${index + 1} inference complete. Raw piped output: \"$pipedResult\"")
+
+                    // Update metrics with the latest inference run
+                    _inferenceMetrics.value = InferenceMetrics(
+                        timeToFirstTokenMs = engineMetrics.timeToFirstTokenMs,
+                        totalInferenceTimeMs = engineMetrics.totalInferenceTimeMs,
+                        tokensPerSecond = engineMetrics.tokensPerSecond,
+                        memoryUsageMb = engineMetrics.memoryUsageMb
+                    )
+
+                    // Parse the piped string and merge with STT timestamps
+                    val flaggedItem = parsePipedOutput(pipedResult, chunk)
+                    if (flaggedItem != null) {
+                        allFlaggedItems.add(flaggedItem)
                     }
                 }
-                
+
+                Log.d(TAG, "All chunks processed. ${allFlaggedItems.size} items flagged.")
+
+                // Auto-flag items against the active ToleranceConfig
                 val profile = _selectedProfile.value
-                val hitlItems = items.map { item ->
+                val hitlItems = allFlaggedItems.map { item ->
                     val shouldCut = profile != null && (
                         (item.category == "Profanity" && item.severity > profile.toleranceConfig.maxProfanitySeverity) ||
                         (item.category == "Violence" && item.severity > profile.toleranceConfig.maxViolenceSeverity) ||
@@ -117,10 +141,65 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 }
                 _uiState.value = UiState.HitlDashboard(hitlItems)
             } catch (e: Throwable) {
-                Log.e("GemmaGuard", "Error during inference or JSON parsing", e)
+                Log.e(TAG, "Error during inference or piped-string parsing", e)
                 _uiState.value = UiState.Error(e.message ?: "Unknown error occurred during processing.")
             }
         }
+    }
+
+    /**
+     * Parses Gemma's hyper-minimal piped output and merges with STT timestamp data.
+     *
+     * Expected format: "word|category|severity" or "CLEAN"
+     * - category must be one of: Profanity, Violence, Thematic, Mean Language
+     * - severity must be an integer 1-5
+     * - reasoning is auto-populated from category (LLM does not generate reasoning)
+     *
+     * @return A [FlaggedItem] if the chunk is flagged, or null if CLEAN.
+     */
+    private fun parsePipedOutput(pipedResult: String, chunk: TranscriptChunk): FlaggedItem? {
+        val cleaned = pipedResult.trim()
+
+        // CLEAN means no flagged content in this chunk
+        if (cleaned.equals("CLEAN", ignoreCase = true)) {
+            Log.d(TAG, "Chunk [${chunk.startMs}-${chunk.endMs}ms] is CLEAN.")
+            return null
+        }
+
+        val parts = cleaned.split("|")
+        if (parts.size != 3) {
+            Log.w(TAG, "Malformed piped output (expected 3 fields, got ${parts.size}): \"$cleaned\"")
+            // Defensive: treat malformed output as a high-severity flag to avoid silent misses
+            return FlaggedItem(
+                timestampStartMs = chunk.startMs,
+                timestampEndMs = chunk.endMs,
+                text = cleaned,
+                category = "Thematic",
+                severity = 5,
+                reasoning = "Flagged by local AI (malformed LLM output — manual review required)"
+            )
+        }
+
+        val word = parts[0].trim()
+        val category = parts[1].trim()
+        val severityRaw = parts[2].trim().toIntOrNull()
+
+        // Validate category
+        if (category !in VALID_CATEGORIES) {
+            Log.w(TAG, "Unknown category \"$category\" in piped output: \"$cleaned\"")
+        }
+
+        // Validate and clamp severity
+        val severity = severityRaw?.coerceIn(SEVERITY_RANGE) ?: 5
+
+        return FlaggedItem(
+            timestampStartMs = chunk.startMs,
+            timestampEndMs = chunk.endMs,
+            text = word,
+            category = if (category in VALID_CATEGORIES) category else "Thematic",
+            severity = severity,
+            reasoning = "Flagged by local AI for $category"
+        )
     }
 
     fun toggleCut(item: HitlItem) {
