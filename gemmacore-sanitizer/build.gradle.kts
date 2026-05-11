@@ -37,8 +37,12 @@ dependencies {
     implementation(libs.kotlinx.coroutines.android)
     implementation("com.google.mediapipe:tasks-genai:latest.release")
 
-    // FFmpeg-Kit (antonkarpenko community fork — full variant with video muxers)
-    implementation(libs.ffmpeg.kit.full)
+    // FFmpeg-Kit (antonkarpenko fork)
+    api("com.antonkarpenko:ffmpeg-kit-full:2.1.0")
+
+    // Vosk Offline STT
+    api("net.java.dev.jna:jna:5.13.0@aar")
+    api("com.alphacephei:vosk-android:0.3.47@aar")
 
     androidTestImplementation("junit:junit:4.13.2")
     androidTestImplementation("androidx.test.ext:junit:1.1.5")

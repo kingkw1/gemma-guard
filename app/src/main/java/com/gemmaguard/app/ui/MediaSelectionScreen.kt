@@ -1,90 +1,60 @@
 package com.gemmaguard.app.ui
 
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.semantics.contentDescription
-import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
-import com.gemmaguard.app.viewmodels.DiscoveredMedia
 
 @Composable
 fun MediaSelectionScreen(
-    discoveredMedia: List<DiscoveredMedia>,
-    onMediaSelected: (DiscoveredMedia) -> Unit,
-    onRefresh: () -> Unit
+    onPickMedia: () -> Unit
 ) {
-    Column(modifier = Modifier.fillMaxSize().padding(16.dp)) {
-        Text("Select Media to Sanitize", style = MaterialTheme.typography.headlineMedium)
-        Spacer(modifier = Modifier.height(8.dp))
+    Column(
+        modifier = Modifier.fillMaxSize().padding(32.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.Center
+    ) {
         Text(
-            "The app scans for .mp4 and .vtt files pushed to the device's media folder.",
-            style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant
+            text = "Ready to Sanitize",
+            style = MaterialTheme.typography.headlineLarge,
+            color = MaterialTheme.colorScheme.primary
         )
         Spacer(modifier = Modifier.height(16.dp))
-
-        if (discoveredMedia.isEmpty()) {
-            Card(
-                modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp),
-                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.errorContainer)
+        Text(
+            text = "Select a video from your gallery to begin the offline Dual-Pipeline (STT + Gemma) analysis.",
+            style = MaterialTheme.typography.bodyLarge,
+            textAlign = TextAlign.Center,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+        Spacer(modifier = Modifier.height(32.dp))
+        
+        Button(
+            onClick = onPickMedia,
+            modifier = Modifier.fillMaxWidth().height(56.dp),
+            shape = MaterialTheme.shapes.medium
+        ) {
+            Text("Select Video from Gallery")
+        }
+        
+        Spacer(modifier = Modifier.height(24.dp))
+        
+        // Security Badge
+        Surface(
+            color = MaterialTheme.colorScheme.secondaryContainer,
+            shape = MaterialTheme.shapes.small
+        ) {
+            Row(
+                modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+                verticalAlignment = Alignment.CenterVertically
             ) {
-                Column(modifier = Modifier.padding(16.dp)) {
-                    Text("No media files found", style = MaterialTheme.typography.titleMedium)
-                    Spacer(modifier = Modifier.height(4.dp))
-                    Text(
-                        "Push .mp4 and .vtt files with:\n./push_media.sh",
-                        style = MaterialTheme.typography.bodyMedium
-                    )
-                }
-            }
-            Spacer(modifier = Modifier.height(8.dp))
-            Button(onClick = onRefresh, modifier = Modifier.fillMaxWidth()) {
-                Text("Refresh")
-            }
-        } else {
-            discoveredMedia.forEach { media ->
-                Card(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(vertical = 8.dp)
-                        .clickable { onMediaSelected(media) }
-                        .semantics { contentDescription = "Select media ${media.displayName}" }
-                ) {
-                    Column(modifier = Modifier.padding(16.dp)) {
-                        Text(text = media.displayName, style = MaterialTheme.typography.titleMedium)
-                        Spacer(modifier = Modifier.height(4.dp))
-                        Text(
-                            text = media.videoFile.name,
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                        Spacer(modifier = Modifier.height(4.dp))
-                        val vttLabel = when (media.vttSource) {
-                            "device" -> "📄 Transcript: ${media.vttFile?.name}"
-                            "assets" -> "📦 Transcript: bundled in app"
-                            else -> "⚠️ No transcript found (will fail)"
-                        }
-                        Text(
-                            text = vttLabel,
-                            style = MaterialTheme.typography.labelSmall,
-                            color = if (media.vttSource == "none") MaterialTheme.colorScheme.error
-                                    else MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                        Spacer(modifier = Modifier.height(2.dp))
-                        Text(
-                            text = "${"%.1f".format(media.videoFile.length() / (1024.0 * 1024.0))} MB",
-                            style = MaterialTheme.typography.labelSmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    }
-                }
-            }
-            Spacer(modifier = Modifier.height(8.dp))
-            OutlinedButton(onClick = onRefresh, modifier = Modifier.fillMaxWidth()) {
-                Text("Rescan Media Folder")
+                Text(
+                    text = "🔒 100% Offline Processing",
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.onSecondaryContainer
+                )
             }
         }
     }

@@ -7,14 +7,15 @@
 #   ./push_media.sh              # Push from ./media/ (default)
 #   ./push_media.sh /path/to/dir # Push from a custom directory
 #
-# Target: /storage/emulated/0/Android/data/com.gemmaguard.app/files/media/
-# The app scans this folder at runtime for .mp4 and .vtt files.
+# Target: /storage/emulated/0/Movies/GemmaGuard/
+# These files will be visible to the native Android Gallery Picker.
 # ============================================================================
 
 set -euo pipefail
 
 PACKAGE="com.gemmaguard.app"
-DEVICE_DIR="/storage/emulated/0/Android/data/${PACKAGE}/files/media"
+DEVICE_DIR="/storage/emulated/0/Movies/GemmaGuard"
+OLD_DEVICE_DIR="/storage/emulated/0/Android/data/${PACKAGE}/files/media"
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 SOURCE_DIR="${1:-${SCRIPT_DIR}/media}"
 
@@ -53,9 +54,14 @@ if ! adb devices | grep -q "device$"; then
     exit 1
 fi
 
+# Cleanup old directory if it exists
+echo -e "${YELLOW}Cleaning up legacy media folder...${NC}"
+adb shell "rm -rf '${OLD_DEVICE_DIR}'" 2>/dev/null || true
+
 # Create target directory on device
-echo -e "${YELLOW}Creating device directory...${NC}"
-adb shell "mkdir -p '${DEVICE_DIR}' && chmod 777 '${DEVICE_DIR}'"
+echo -e "${YELLOW}Creating device directory: ${DEVICE_DIR}...${NC}"
+adb shell "mkdir -p '${DEVICE_DIR}'"
+adb shell "chmod 777 '${DEVICE_DIR}'" 2>/dev/null || true
 
 # Push each media file
 PUSHED=0

@@ -55,16 +55,33 @@ captures/
 .externalNativeBuild
 .cxx/
 
-# NDK
+# NDK / Native Binaries
 obj/
+*.so
+*.a
+*.o
+jniLibs/
 
-# MacOS
+# MacOS / Linux System Files
 .DS_Store
+.directory
+*~
+
+# Scratch & Temporary
+scratch/
+scratch_aar/
+*.tmp
+*.swp
 
 # Large AI Models (DO NOT COMMIT)
 *.tflite
 gemma.tflite
 *.task
+*.litert
+*.litertlm
+
+# Vosk Offline STT Model
+gemmacore-sanitizer/src/main/assets/model/
 
 # Video Files
 media/*

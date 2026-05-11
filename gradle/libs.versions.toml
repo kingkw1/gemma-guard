@@ -32,10 +32,8 @@ kotlinx-serialization-json = { module = "org.jetbrains.kotlinx:kotlinx-serializa
 # Coroutines
 kotlinx-coroutines-android = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-android", version.ref = "coroutines" }
 
-# FFmpeg-Kit (antonkarpenko community fork of retired arthenica/ffmpeg-kit)
-# Full variant: includes all video muxers/codecs for -c:v copy into .mp4 containers
-# Preserves com.arthenica.ffmpegkit Java package namespace — imports unchanged
-ffmpeg-kit-full = { module = "com.antonkarpenko:ffmpeg-kit-full", version.ref = "ffmpegKit" }
+# FFmpeg-Kit (antonkarpenko community fork — verified working)
+ffmpeg-kit = { module = "com.antonkarpenko:ffmpeg-kit-full", version.ref = "ffmpegKit" }
 
 [plugins]
 android-application = { id = "com.android.application", version.ref = "agp" }
