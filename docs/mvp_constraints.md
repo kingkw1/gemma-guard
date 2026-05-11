@@ -6,8 +6,8 @@ Deliver a functional, offline-first Android application demonstrating edge-based
 ## 2. The Critical Path (Fail-Fast Protocol)
 The highest risk to this project is the hardware execution layer. UI development is secondary until the following architectural spikes are validated on target consumer hardware (specifically a Samsung Galaxy S23):
 * **Constraint 2.1 (Model Loading):** The application must successfully load the Gemma 4 E2B (or smallest viable variant) LiteRT quantized model into memory on the device without triggering an Out-Of-Memory (OOM) crash.
-* **Constraint 2.2 (Inference Latency):** The model must parse a 30-second text transcript chunk and output a structured JSON severity manifest within an acceptable user-waiting threshold (under 15 seconds). 
-* **Constraint 2.3 (Audio Fallback):** While Gemma 4 supports native audio processing, running audio-inferences on mobile edge hardware is highly experimental and compute-intensive. **For the MVP, audio-processing is designated as a secondary stretch goal.** The primary inference pipeline *must* rely on reading `.vtt` / `.srt` text transcripts to guarantee a successful demo. 
+* **Constraint 2.2 (Inference Latency):** The model must parse a text chunk and output a hyper-minimal piped string (`word|category|severity`) within an acceptable 7-to-10 second hardware execution window per chunk.
+* **Constraint 2.3 (Audio Pre-processing):** Running native audio-inferences on Gemma edge hardware is out of scope. The primary pipeline *must* rely on Android's native offline `SpeechRecognizer` to dynamically generate text chunks for the LLM.
 
 ## 3. Hardware & Architecture Constraints
 * **Zero Cloud Dependency:** The application must execute 100% locally. Any API calls to Gemini, OpenAI, or external cloud inference engines are strictly forbidden. The system must function entirely offline (Airplane Mode).
@@ -23,9 +23,9 @@ To avoid copyright issues and unpredictable file-parsing bugs during the hackath
 * **Developmental Toggles:** The Human-in-the-Loop (HITL) UI must feature three distinct age profiles (Ages 4, 6, and 7) to demonstrate how the LLM dynamically adjusts its severity flagging and contextual reasoning based on the specific developmental stage of the user. 
 * **The "Bring Your Own File" Feature:** The UI must contain an intent button allowing judges to load a local `.mp4` and `.vtt` file from their device storage to prove the architecture is not hardcoded.
 
-## 5. Audio Dubbing (The "Wow" Factor)
-* **No Voice Cloning:** Attempting seamless, exact-match voice cloning (zero-shot TTS) requires excessive compute and introduces copyright liability. This is strictly out of scope.
-* **Comedic Replacement:** The MVP will utilize a lightweight Android Text-to-Speech library (or a fast, tiny edge TTS model) to inject highly distinct, comedic substitute phrases (e.g., "oh biscuits!", "fudge!") over flagged timestamps.
+## 5. Audio Muting (The Seamless Edit)
+* **No Voice Cloning or TTS Dubbing:** Attempting seamless voice cloning or TTS overdubbing introduces latency, jarring audio dropouts, and compute overhead. This is strictly out of scope.
+* **Block-Level Muting:** The MVP will utilize FFmpeg to silently mute the entire audio block containing the flagged content, providing a safe, continuous video stream.
 
 ## 6. Out of Scope for MVP
 * User accounts, authentication, or cloud-syncing profiles.

@@ -20,3 +20,4 @@
 * **No Ghost Code:** Do not write placeholder functions or `// TODO: Implement later` comments without explicit permission. Write complete, functional slices.
 * **File Scoping:** Keep composables modular. Do not write UI files exceeding 200 lines; break them down into smaller components.
 * **Accessibility by Default:** All Jetpack Compose interactive elements MUST include semantic modifiers (e.g., contentDescription, stateDescription). The HITL dashboard must be fully navigable via Android TalkBack.
+* **Synchronous Edge Execution:** The Gemma LiteRT `analyze()` calls MUST be executed sequentially in a synchronous background loop. Do NOT use `generateResponseAsync()` or drop JVM references to bypass the C++ execution block, as this will orphan native XNNPACK threads and cause an immediate Out-Of-Memory (OOM) crash.
