@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<paths>
+    <!-- External files directory: /storage/emulated/0/Android/data/com.gemmaguard.app/files/ -->
+    <external-files-path name="media" path="media/" />
+    <external-files-path name="output" path="output/" />
+    <external-files-path name="root" path="." />
+</paths>

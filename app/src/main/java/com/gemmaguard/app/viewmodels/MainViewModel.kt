@@ -9,6 +9,7 @@ import com.gemmaguard.sanitizer.FFmpegWrapper
 import com.gemmaguard.sanitizer.FlaggedTimestamp
 import com.gemmaguard.sanitizer.LiteRTEngine
 import com.gemmaguard.sanitizer.PipedStringParser
+import com.gemmaguard.sanitizer.VttParser
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.Dispatchers
@@ -18,7 +19,7 @@ import java.io.File
 
 sealed class UiState {
     object ProfileSelection : UiState()
-    object MediaSelection : UiState()
+    data class MediaSelection(val discoveredMedia: List<DiscoveredMedia>) : UiState()
     data class Processing(val currentChunk: Int = 0, val totalChunks: Int = 0) : UiState()
     data class HitlDashboard(
         val items: List<HitlItem>,
@@ -28,6 +29,18 @@ sealed class UiState {
     data class MutingComplete(val outputPath: String) : UiState()
     data class Error(val message: String) : UiState()
 }
+
+/**
+ * Represents a media file pair discovered on the device.
+ * The app scans getExternalFilesDir("media") for .mp4 files and tries
+ * to find a matching .vtt transcript via multiple naming strategies.
+ */
+data class DiscoveredMedia(
+    val displayName: String,
+    val videoFile: File,
+    val vttFile: File?,
+    val vttSource: String  // "device", "assets", or "none"
+)
 
 data class HitlItem(
     val flaggedData: FlaggedItem,
@@ -65,6 +78,12 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     /** Tracks the current video file path for FFmpeg execution */
     private var currentVideoPath: String? = null
 
+    /** The media directory where push_media.sh deposits files */
+    private val mediaDir: File = File(application.getExternalFilesDir(null), "media")
+
+    /** The output directory for sanitized files */
+    val outputDir: File = File(application.getExternalFilesDir(null), "output")
+
     init {
         try {
             Log.d(TAG, "Initializing LiteRT Engine and loading model...")
@@ -87,7 +106,164 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     fun selectProfile(profile: UserProfile) {
         _selectedProfile.value = profile
-        _uiState.value = UiState.MediaSelection
+        scanForMedia()
+    }
+
+    /**
+     * Scans the media directory for .mp4 files and tries to find matching VTT transcripts.
+     *
+     * Matching strategy (per mp4 file, first match wins):
+     * 1. Same directory: {basename}.vtt
+     * 2. Same directory: {basename}_transcript.vtt
+     * 3. Same directory: any .vtt whose name contains the basename
+     * 4. App assets: {basename}.vtt
+     */
+    fun scanForMedia() {
+        Log.d(TAG, "Scanning for media in: ${mediaDir.absolutePath}")
+
+        // Ensure the directory exists and is owned by the app
+        if (!mediaDir.exists()) {
+            Log.d(TAG, "Media directory does not exist. Creating it now...")
+            val created = mediaDir.mkdirs()
+            Log.d(TAG, "Directory creation result: $created")
+        }
+
+        if (!mediaDir.canRead()) {
+            Log.e(TAG, "CRITICAL: Cannot read media directory! Permission denied.")
+            _uiState.value = UiState.MediaSelection(emptyList())
+            return
+        }
+
+        val allFiles = mediaDir.listFiles()
+        Log.d(TAG, "Total files in directory (unfiltered): ${allFiles?.size ?: "NULL (I/O Error)"}")
+        
+        allFiles?.forEach { 
+            Log.d(TAG, "  - Found file: ${it.name} (isFile: ${it.isFile}, ext: ${it.extension})")
+        }
+
+        val mp4Files = allFiles?.filter { file ->
+            file.isFile && file.extension.equals("mp4", ignoreCase = true)
+        }?.sortedBy { it.name } ?: emptyList()
+
+        Log.d(TAG, "Filtered result: Found ${mp4Files.size} .mp4 files")
+
+        val allVttFiles = mediaDir.listFiles { file ->
+            file.isFile && file.extension.equals("vtt", ignoreCase = true)
+        }?.toList() ?: emptyList()
+
+        val discovered = mp4Files.map { mp4 ->
+            val baseName = mp4.nameWithoutExtension
+            val (vttFile, vttSource) = findMatchingVtt(baseName, allVttFiles)
+            Log.d(TAG, "  ${mp4.name} → VTT: ${vttFile?.name ?: "NONE"} (source: $vttSource)")
+            DiscoveredMedia(
+                displayName = baseName.replace("_", " ").replace(Regex("([a-z])([A-Z])"), "$1 $2"),
+                videoFile = mp4,
+                vttFile = vttFile,
+                vttSource = vttSource
+            )
+        }
+
+        _uiState.value = UiState.MediaSelection(discovered)
+    }
+
+    private fun findMatchingVtt(baseName: String, allVttFiles: List<File>): Pair<File?, String> {
+        // Strategy 1: Exact basename match in same directory
+        val exact = allVttFiles.find { it.nameWithoutExtension.equals(baseName, ignoreCase = true) }
+        if (exact != null) return exact to "device"
+
+        // Strategy 2: {basename}_transcript.vtt
+        val transcript = allVttFiles.find {
+            it.nameWithoutExtension.equals("${baseName}_transcript", ignoreCase = true)
+        }
+        if (transcript != null) return transcript to "device"
+
+        // Strategy 3: Aggressive fuzzy match (handles typos like isasip vs iasip)
+        // It strips "transcript", underscores, and checks for substantial overlap
+        val fuzzy = allVttFiles.find { vtt ->
+            val vttClean = vtt.nameWithoutExtension.lowercase()
+                .replace("transcript", "")
+                .replace("_", "")
+                .replace(" ", "")
+            val searchClean = baseName.lowercase()
+                .replace("_", "")
+                .replace(" ", "")
+            
+            // Match if one contains the other, or if they share the same "clip" suffix
+            vttClean.contains(searchClean) || 
+            searchClean.contains(vttClean) ||
+            (vttClean.endsWith("clip") && searchClean.endsWith("clip") && vttClean.takeLast(8) == searchClean.takeLast(8)) ||
+            (vttClean.contains("boat") && searchClean.contains("boat")) ||
+            (vttClean.contains("house") && searchClean.contains("house"))
+        }
+        if (fuzzy != null) return fuzzy to "device"
+
+        // Strategy 4: Check app assets
+        val app = getApplication<Application>()
+        return try {
+            val assetContent = app.assets.open("$baseName.vtt")
+            assetContent.close()
+            // Return null file but signal it's in assets — caller will load from assets
+            null to "assets"
+        } catch (e: Exception) {
+            null to "none"
+        }
+    }
+
+    /**
+     * Loads transcript chunks from a discovered media item.
+     * Handles both device-local VTT files and bundled assets.
+     */
+    private fun loadChunksFromDiscoveredMedia(media: DiscoveredMedia): List<TranscriptChunk> {
+        return when {
+            media.vttFile != null -> {
+                // Read VTT from device filesystem
+                try {
+                    val vttContent = media.vttFile.readText()
+                    VttParser.parse(vttContent).map { block ->
+                        TranscriptChunk(startMs = block.startMs, endMs = block.endMs, text = block.text)
+                    }
+                } catch (e: Exception) {
+                    Log.e(TAG, "Failed to read VTT from device: ${media.vttFile.absolutePath}", e)
+                    emptyList()
+                }
+            }
+            media.vttSource == "assets" -> {
+                // Read VTT from bundled assets
+                try {
+                    val baseName = media.videoFile.nameWithoutExtension
+                    val vttContent = getApplication<Application>().assets
+                        .open("$baseName.vtt").bufferedReader().use { it.readText() }
+                    VttParser.parse(vttContent).map { block ->
+                        TranscriptChunk(startMs = block.startMs, endMs = block.endMs, text = block.text)
+                    }
+                } catch (e: Exception) {
+                    Log.e(TAG, "Failed to read VTT from assets", e)
+                    emptyList()
+                }
+            }
+            else -> {
+                Log.w(TAG, "No VTT transcript found for ${media.videoFile.name}")
+                emptyList()
+            }
+        }
+    }
+
+    /**
+     * Processes a discovered media item through the neuro-symbolic pipeline.
+     */
+    fun processDiscoveredMedia(media: DiscoveredMedia) {
+        val chunks = loadChunksFromDiscoveredMedia(media)
+        val videoPath = media.videoFile.absolutePath
+
+        if (chunks.isEmpty()) {
+            _uiState.value = UiState.Error(
+                "No transcript found for ${media.videoFile.name}. " +
+                "Push a matching .vtt file to the media/ folder."
+            )
+            return
+        }
+
+        processMedia(chunks, videoPath)
     }
 
     /**
@@ -104,9 +280,6 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
      *
      * CRITICAL: Inference calls are sequential (synchronous generateResponse).
      * DO NOT use generateResponseAsync() — it orphans native XNNPACK threads → OOM.
-     *
-     * @param chunks List of transcript chunks from VTT or STT
-     * @param videoFilePath Absolute path to the video file on device (for FFmpeg and preview)
      */
     fun processMedia(chunks: List<TranscriptChunk>, videoFilePath: String) {
         Log.d(TAG, "Starting media processing. ${chunks.size} chunks to analyze.")
@@ -192,7 +365,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
      * Collects all items where isCheckedForCut == true, converts their timestamps
      * to [FlaggedTimestamp], and invokes [FFmpegWrapper.executeSanitization].
      *
-     * Output is written to the same external files directory with a "_sanitized" suffix.
+     * Output is written to the output/ subdirectory with a "_sanitized" suffix.
      */
     fun executeMuting() {
         val currentState = _uiState.value
@@ -218,8 +391,11 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
         viewModelScope.launch(Dispatchers.IO) {
             try {
+                // Ensure output directory exists
+                outputDir.mkdirs()
+
                 val outputName = inputFile.nameWithoutExtension + "_sanitized.mp4"
-                val outputFile = File(inputFile.parentFile, outputName)
+                val outputFile = File(outputDir, outputName)
 
                 val success = ffmpegWrapper.executeSanitization(
                     inputVideo = inputFile,

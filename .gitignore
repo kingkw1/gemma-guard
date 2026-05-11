@@ -65,3 +65,12 @@ obj/
 *.tflite
 gemma.tflite
 *.task
+
+# Video Files
+media/*
+# Ignore local test media
+*.mp4
+*.vtt
+
+# Memory Heap Dumps
+*.hprof
