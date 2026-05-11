@@ -37,8 +37,8 @@ dependencies {
     implementation(libs.kotlinx.coroutines.android)
     implementation("com.google.mediapipe:tasks-genai:latest.release")
 
-    // FFmpeg-Kit (min-gpl: video muxers/codecs for -c:v copy into .mp4 containers)
-    implementation(libs.ffmpeg.kit.min.gpl)
+    // FFmpeg-Kit (antonkarpenko community fork — full variant with video muxers)
+    implementation(libs.ffmpeg.kit.full)
 
     androidTestImplementation("junit:junit:4.13.2")
     androidTestImplementation("androidx.test.ext:junit:1.1.5")

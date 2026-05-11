@@ -23,6 +23,7 @@ import com.gemmaguard.app.viewmodels.MainViewModel
 import com.gemmaguard.app.viewmodels.TranscriptChunk
 import com.gemmaguard.app.viewmodels.UiState
 import com.gemmaguard.sanitizer.VttParser
+import java.io.File
 
 class MainActivity : ComponentActivity() {
     private val viewModel: MainViewModel by viewModels()
@@ -43,9 +44,10 @@ class MainActivity : ComponentActivity() {
                         }
                         is UiState.MediaSelection -> {
                             MediaSelectionScreen(
-                                onMediaSelected = { assetBaseName ->
-                                    val chunks = loadTranscriptChunksFromAssets(assetBaseName)
-                                    viewModel.processMedia(chunks)
+                                onMediaSelected = { vttAssetName, videoFileName ->
+                                    val chunks = loadTranscriptChunksFromAssets(vttAssetName)
+                                    val videoPath = resolveVideoFilePath(videoFileName)
+                                    viewModel.processMedia(chunks, videoPath)
                                 }
                             )
                         }
@@ -62,9 +64,40 @@ class MainActivity : ComponentActivity() {
                             HitlDashboardScreen(
                                 items = s.items,
                                 metrics = metrics,
+                                videoFilePath = s.videoFilePath,
                                 onToggle = { viewModel.toggleCut(it) },
-                                onApprove = { /* Execute FFmpeg — Phase 2 */ }
+                                onApprove = { viewModel.executeMuting() }
                             )
+                        }
+                        is UiState.Muting -> {
+                            Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                    CircularProgressIndicator()
+                                    Spacer(modifier = Modifier.height(16.dp))
+                                    Text(s.status)
+                                }
+                            }
+                        }
+                        is UiState.MutingComplete -> {
+                            Column(
+                                modifier = Modifier.fillMaxSize().padding(16.dp),
+                                horizontalAlignment = Alignment.CenterHorizontally,
+                                verticalArrangement = Arrangement.Center
+                            ) {
+                                Text("✅ Sanitization Complete!", style = MaterialTheme.typography.headlineMedium)
+                                Spacer(modifier = Modifier.height(16.dp))
+                                Text("Output saved to:", style = MaterialTheme.typography.bodyMedium)
+                                Spacer(modifier = Modifier.height(8.dp))
+                                Text(
+                                    s.outputPath,
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.primary
+                                )
+                                Spacer(modifier = Modifier.height(24.dp))
+                                Button(onClick = { viewModel.resetToProfileSelection() }) {
+                                    Text("Process Another Video")
+                                }
+                            }
                         }
                         is UiState.Error -> {
                             Column(
@@ -104,5 +137,14 @@ class MainActivity : ComponentActivity() {
         } catch (e: Exception) {
             emptyList()
         }
+    }
+
+    /**
+     * Resolves a video filename to its absolute path in the app's external files directory.
+     * Videos are pushed here via: adb push file.mp4 /storage/emulated/0/Android/data/com.gemmaguard.app/files/
+     */
+    private fun resolveVideoFilePath(videoFileName: String): String {
+        val externalDir = getExternalFilesDir(null)
+        return File(externalDir, videoFileName).absolutePath
     }
 }

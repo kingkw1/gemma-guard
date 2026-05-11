@@ -22,10 +22,12 @@ import com.gemmaguard.app.viewmodels.HitlItem
 fun HitlDashboardScreen(
     items: List<HitlItem>,
     metrics: InferenceMetrics?,
+    videoFilePath: String,
     onToggle: (HitlItem) -> Unit,
     onApprove: () -> Unit
 ) {
     var selectedPreview by remember { mutableStateOf<HitlItem?>(null) }
+    val checkedCount = items.count { it.isCheckedForCut }
     
     Column(modifier = Modifier.fillMaxSize().padding(16.dp)) {
         Text("HITL Review Dashboard", style = MaterialTheme.typography.headlineMedium)
@@ -41,9 +43,25 @@ fun HitlDashboardScreen(
                 }
             }
         }
+
+        // Summary bar
+        Card(
+            modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
+            colors = CardDefaults.cardColors(
+                containerColor = if (items.isEmpty()) MaterialTheme.colorScheme.tertiaryContainer
+                    else MaterialTheme.colorScheme.errorContainer
+            )
+        ) {
+            Text(
+                text = if (items.isEmpty()) "✅ No issues found — media is clean."
+                    else "⚠️ ${items.size} items flagged. $checkedCount selected for muting.",
+                modifier = Modifier.padding(12.dp),
+                style = MaterialTheme.typography.bodyMedium
+            )
+        }
         
         selectedPreview?.let { item ->
-            ContextualPreviewPlayer(item)
+            ContextualPreviewPlayer(item, videoFilePath)
             Spacer(modifier = Modifier.height(16.dp))
         }
 
@@ -59,20 +77,25 @@ fun HitlDashboardScreen(
         
         Button(
             onClick = onApprove,
-            modifier = Modifier.fillMaxWidth().padding(top = 16.dp)
+            modifier = Modifier.fillMaxWidth().padding(top = 16.dp),
+            enabled = checkedCount > 0 || items.isEmpty()
         ) {
-            Text("Approve and Execute Muxing")
+            Text(
+                if (checkedCount > 0) "Approve & Mute $checkedCount Segments"
+                else if (items.isEmpty()) "Approve — No Changes Needed"
+                else "Select segments to mute"
+            )
         }
     }
 }
 
 @Composable
-fun ContextualPreviewPlayer(item: HitlItem) {
+fun ContextualPreviewPlayer(item: HitlItem, videoFilePath: String) {
     val context = LocalContext.current
     val exoPlayer = remember { ExoPlayer.Builder(context).build() }
     
-    DisposableEffect(item) {
-        val mediaItem = MediaItem.fromUri("file:///android_asset/borderline_mild.mp4")
+    DisposableEffect(item, videoFilePath) {
+        val mediaItem = MediaItem.fromUri("file://$videoFilePath")
         exoPlayer.setMediaItem(mediaItem)
         exoPlayer.prepare()
         exoPlayer.seekTo(item.flaggedData.timestampStartMs)
@@ -116,6 +139,11 @@ fun HitlItemRow(item: HitlItem, onToggle: () -> Unit, onPreviewSelect: () -> Uni
                 Text(item.flaggedData.text, style = MaterialTheme.typography.bodyLarge)
                 Text("${item.flaggedData.category} - Severity: ${item.flaggedData.severity}", style = MaterialTheme.typography.bodyMedium)
                 Text(item.flaggedData.reasoning, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text(
+                    "${item.flaggedData.timestampStartMs}ms — ${item.flaggedData.timestampEndMs}ms",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
             }
         }
     }

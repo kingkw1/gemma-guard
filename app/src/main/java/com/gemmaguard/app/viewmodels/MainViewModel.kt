@@ -5,6 +5,8 @@ import android.util.Log
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.gemmaguard.app.models.*
+import com.gemmaguard.sanitizer.FFmpegWrapper
+import com.gemmaguard.sanitizer.FlaggedTimestamp
 import com.gemmaguard.sanitizer.LiteRTEngine
 import com.gemmaguard.sanitizer.PipedStringParser
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -12,12 +14,18 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
+import java.io.File
 
 sealed class UiState {
     object ProfileSelection : UiState()
     object MediaSelection : UiState()
     data class Processing(val currentChunk: Int = 0, val totalChunks: Int = 0) : UiState()
-    data class HitlDashboard(val items: List<HitlItem>) : UiState()
+    data class HitlDashboard(
+        val items: List<HitlItem>,
+        val videoFilePath: String
+    ) : UiState()
+    data class Muting(val status: String = "Executing FFmpeg...") : UiState()
+    data class MutingComplete(val outputPath: String) : UiState()
     data class Error(val message: String) : UiState()
 }
 
@@ -50,8 +58,12 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     private val _inferenceMetrics = MutableStateFlow<InferenceMetrics?>(null)
     val inferenceMetrics: StateFlow<InferenceMetrics?> = _inferenceMetrics.asStateFlow()
-    
+
     private val liteRTEngine = LiteRTEngine(application)
+    private val ffmpegWrapper = FFmpegWrapper(application)
+
+    /** Tracks the current video file path for FFmpeg execution */
+    private var currentVideoPath: String? = null
 
     init {
         try {
@@ -92,9 +104,14 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
      *
      * CRITICAL: Inference calls are sequential (synchronous generateResponse).
      * DO NOT use generateResponseAsync() — it orphans native XNNPACK threads → OOM.
+     *
+     * @param chunks List of transcript chunks from VTT or STT
+     * @param videoFilePath Absolute path to the video file on device (for FFmpeg and preview)
      */
-    fun processMedia(chunks: List<TranscriptChunk>) {
+    fun processMedia(chunks: List<TranscriptChunk>, videoFilePath: String) {
         Log.d(TAG, "Starting media processing. ${chunks.size} chunks to analyze.")
+        Log.d(TAG, "Video file path: $videoFilePath")
+        currentVideoPath = videoFilePath
         _uiState.value = UiState.Processing(currentChunk = 0, totalChunks = chunks.size)
 
         viewModelScope.launch(Dispatchers.IO) {
@@ -151,7 +168,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                     )
                     HitlItem(item, shouldCut)
                 }
-                _uiState.value = UiState.HitlDashboard(hitlItems)
+                _uiState.value = UiState.HitlDashboard(hitlItems, videoFilePath)
             } catch (e: Throwable) {
                 Log.e(TAG, "Error during inference or piped-string parsing", e)
                 _uiState.value = UiState.Error(e.message ?: "Unknown error occurred during processing.")
@@ -165,17 +182,73 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             val updatedItems = currentState.items.map {
                 if (it == item) it.copy(isCheckedForCut = !it.isCheckedForCut) else it
             }
-            _uiState.value = UiState.HitlDashboard(updatedItems)
+            _uiState.value = UiState.HitlDashboard(updatedItems, currentState.videoFilePath)
+        }
+    }
+
+    /**
+     * Executes FFmpeg audio muting on the checked HITL items.
+     *
+     * Collects all items where isCheckedForCut == true, converts their timestamps
+     * to [FlaggedTimestamp], and invokes [FFmpegWrapper.executeSanitization].
+     *
+     * Output is written to the same external files directory with a "_sanitized" suffix.
+     */
+    fun executeMuting() {
+        val currentState = _uiState.value
+        if (currentState !is UiState.HitlDashboard) return
+
+        val videoPath = currentVideoPath ?: return
+        val inputFile = File(videoPath)
+        if (!inputFile.exists()) {
+            _uiState.value = UiState.Error("Video file not found: $videoPath")
+            return
+        }
+
+        val checkedItems = currentState.items.filter { it.isCheckedForCut }
+        val flaggedTimestamps = checkedItems.map { item ->
+            FlaggedTimestamp(
+                startMs = item.flaggedData.timestampStartMs,
+                endMs = item.flaggedData.timestampEndMs
+            )
+        }
+
+        Log.d(TAG, "Executing muting. ${flaggedTimestamps.size} segments to mute.")
+        _uiState.value = UiState.Muting("Muting ${flaggedTimestamps.size} segments...")
+
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                val outputName = inputFile.nameWithoutExtension + "_sanitized.mp4"
+                val outputFile = File(inputFile.parentFile, outputName)
+
+                val success = ffmpegWrapper.executeSanitization(
+                    inputVideo = inputFile,
+                    outputVideo = outputFile,
+                    flaggedTimestamps = flaggedTimestamps
+                )
+
+                if (success) {
+                    Log.d(TAG, "Sanitization complete: ${outputFile.absolutePath}")
+                    _uiState.value = UiState.MutingComplete(outputFile.absolutePath)
+                } else {
+                    _uiState.value = UiState.Error("FFmpeg muting failed. Check logs for details.")
+                }
+            } catch (e: Throwable) {
+                Log.e(TAG, "FFmpeg execution error", e)
+                _uiState.value = UiState.Error("Muting error: ${e.message}")
+            }
         }
     }
 
     fun resetToProfileSelection() {
         _uiState.value = UiState.ProfileSelection
         _selectedProfile.value = null
+        currentVideoPath = null
     }
 
     override fun onCleared() {
         super.onCleared()
         liteRTEngine.destroy()
+        ffmpegWrapper.destroy()
     }
 }

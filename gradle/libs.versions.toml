@@ -8,6 +8,7 @@ composeBom = "2024.06.00"
 exoplayer = "1.3.1"
 kotlinxSerialization = "1.6.3"
 coroutines = "1.8.1"
+ffmpegKit = "2.1.0"
 
 [libraries]
 androidx-core-ktx = { group = "androidx.core", name = "core-ktx", version.ref = "coreKtx" }
@@ -30,6 +31,11 @@ kotlinx-serialization-json = { module = "org.jetbrains.kotlinx:kotlinx-serializa
 
 # Coroutines
 kotlinx-coroutines-android = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-android", version.ref = "coroutines" }
+
+# FFmpeg-Kit (antonkarpenko community fork of retired arthenica/ffmpeg-kit)
+# Full variant: includes all video muxers/codecs for -c:v copy into .mp4 containers
+# Preserves com.arthenica.ffmpegkit Java package namespace — imports unchanged
+ffmpeg-kit-full = { module = "com.antonkarpenko:ffmpeg-kit-full", version.ref = "ffmpegKit" }
 
 [plugins]
 android-application = { id = "com.android.application", version.ref = "agp" }
