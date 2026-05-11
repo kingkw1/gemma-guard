@@ -1,7 +1,6 @@
 plugins {
     alias(libs.plugins.android.library)
     alias(libs.plugins.jetbrains.kotlin.android)
-    alias(libs.plugins.kotlin.serialization)
 }
 
 android {
@@ -36,8 +35,10 @@ android {
 dependencies {
     implementation(libs.androidx.core.ktx)
     implementation(libs.kotlinx.coroutines.android)
-    implementation(libs.kotlinx.serialization.json)
     implementation("com.google.mediapipe:tasks-genai:latest.release")
+
+    // FFmpeg-Kit (min-gpl: video muxers/codecs for -c:v copy into .mp4 containers)
+    implementation(libs.ffmpeg.kit.min.gpl)
 
     androidTestImplementation("junit:junit:4.13.2")
     androidTestImplementation("androidx.test.ext:junit:1.1.5")

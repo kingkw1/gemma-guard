@@ -6,6 +6,7 @@ import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.gemmaguard.app.models.*
 import com.gemmaguard.sanitizer.LiteRTEngine
+import com.gemmaguard.sanitizer.PipedStringParser
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.Dispatchers
@@ -39,8 +40,6 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     companion object {
         private const val TAG = "GemmaGuard"
-        private val VALID_CATEGORIES = setOf("Profanity", "Violence", "Thematic", "Mean Language")
-        private val SEVERITY_RANGE = 1..5
     }
 
     private val _uiState = MutableStateFlow<UiState>(UiState.ProfileSelection)
@@ -86,9 +85,10 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
      * 1. STT engine provides [TranscriptChunk] list (text + timestamps).
      * 2. Each chunk is fed synchronously to Gemma via [LiteRTEngine.analyze].
      * 3. Gemma returns a hyper-minimal piped string: "word|category|severity" or "CLEAN".
-     * 4. Kotlin merges the LLM semantic output with the STT-provided timestamps
+     * 4. [PipedStringParser] extracts the semantic classification.
+     * 5. Kotlin merges the parsed flag with the STT-provided timestamps
      *    to construct [FlaggedItem] state objects.
-     * 5. Items are auto-flagged against the active [ToleranceConfig].
+     * 6. Items are auto-flagged against the active [ToleranceConfig].
      *
      * CRITICAL: Inference calls are sequential (synchronous generateResponse).
      * DO NOT use generateResponseAsync() — it orphans native XNNPACK threads → OOM.
@@ -119,10 +119,22 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                         memoryUsageMb = engineMetrics.memoryUsageMb
                     )
 
-                    // Parse the piped string and merge with STT timestamps
-                    val flaggedItem = parsePipedOutput(pipedResult, chunk)
-                    if (flaggedItem != null) {
-                        allFlaggedItems.add(flaggedItem)
+                    // Parse the piped string via the dedicated parser in :gemmacore-sanitizer
+                    val parsedFlag = PipedStringParser.parse(pipedResult)
+                    if (parsedFlag != null) {
+                        // Merge semantic classification with STT-provided timestamps
+                        allFlaggedItems.add(
+                            FlaggedItem(
+                                timestampStartMs = chunk.startMs,
+                                timestampEndMs = chunk.endMs,
+                                text = parsedFlag.flaggedText,
+                                category = parsedFlag.category,
+                                severity = parsedFlag.severity,
+                                reasoning = PipedStringParser.generateReasoning(parsedFlag)
+                            )
+                        )
+                    } else {
+                        Log.d(TAG, "Chunk [${chunk.startMs}-${chunk.endMs}ms] is CLEAN.")
                     }
                 }
 
@@ -145,61 +157,6 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 _uiState.value = UiState.Error(e.message ?: "Unknown error occurred during processing.")
             }
         }
-    }
-
-    /**
-     * Parses Gemma's hyper-minimal piped output and merges with STT timestamp data.
-     *
-     * Expected format: "word|category|severity" or "CLEAN"
-     * - category must be one of: Profanity, Violence, Thematic, Mean Language
-     * - severity must be an integer 1-5
-     * - reasoning is auto-populated from category (LLM does not generate reasoning)
-     *
-     * @return A [FlaggedItem] if the chunk is flagged, or null if CLEAN.
-     */
-    private fun parsePipedOutput(pipedResult: String, chunk: TranscriptChunk): FlaggedItem? {
-        val cleaned = pipedResult.trim()
-
-        // CLEAN means no flagged content in this chunk
-        if (cleaned.equals("CLEAN", ignoreCase = true)) {
-            Log.d(TAG, "Chunk [${chunk.startMs}-${chunk.endMs}ms] is CLEAN.")
-            return null
-        }
-
-        val parts = cleaned.split("|")
-        if (parts.size != 3) {
-            Log.w(TAG, "Malformed piped output (expected 3 fields, got ${parts.size}): \"$cleaned\"")
-            // Defensive: treat malformed output as a high-severity flag to avoid silent misses
-            return FlaggedItem(
-                timestampStartMs = chunk.startMs,
-                timestampEndMs = chunk.endMs,
-                text = cleaned,
-                category = "Thematic",
-                severity = 5,
-                reasoning = "Flagged by local AI (malformed LLM output — manual review required)"
-            )
-        }
-
-        val word = parts[0].trim()
-        val category = parts[1].trim()
-        val severityRaw = parts[2].trim().toIntOrNull()
-
-        // Validate category
-        if (category !in VALID_CATEGORIES) {
-            Log.w(TAG, "Unknown category \"$category\" in piped output: \"$cleaned\"")
-        }
-
-        // Validate and clamp severity
-        val severity = severityRaw?.coerceIn(SEVERITY_RANGE) ?: 5
-
-        return FlaggedItem(
-            timestampStartMs = chunk.startMs,
-            timestampEndMs = chunk.endMs,
-            text = word,
-            category = if (category in VALID_CATEGORIES) category else "Thematic",
-            severity = severity,
-            reasoning = "Flagged by local AI for $category"
-        )
     }
 
     fun toggleCut(item: HitlItem) {
