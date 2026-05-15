@@ -32,12 +32,6 @@ data class HitlItem(
     var isCheckedForCut: Boolean
 )
 
-data class TranscriptChunk(
-    val startMs: Long,
-    val endMs: Long,
-    val text: String
-)
-
 class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     companion object {
@@ -60,15 +54,6 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     private var currentVideoFile: File? = null
 
-    init {
-        try {
-            val modelPath = File(getApplication<Application>().getExternalFilesDir(null), "gemma-4-E2B-it.litertlm").absolutePath
-            liteRTEngine.loadModel(modelPath)
-        } catch (e: Exception) {
-            _uiState.value = UiState.Error("Failed to load model: ${e.message}")
-        }
-    }
-
     val defaultProfiles = listOf(
         UserProfile("p1", "Age 4 (Strict)", 4, ToleranceConfig(0, 0, 0, true)),
         UserProfile("p2", "Age 6 (Moderate)", 6, ToleranceConfig(1, 1, 1, true)),
@@ -82,35 +67,35 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     /**
      * Executes the full BYOF Pipeline:
-     * 1. Resolve Content URI to a local File in cache.
-     * 2. Extract WAV from the MP4 via FFmpeg.
-     * 3. Transcribe WAV to SttUtterances via SpeechToTextEngine (Offline STT).
-     * 4. Classify each utterance via Gemma (LiteRTEngine).
-     * 5. Present results in HITL Dashboard.
+     * 1. Pre-load Gemma model.
+     * 2. Resolve URI and Extract Audio.
+     * 3. Transcribe Audio (or use sidecar).
+     * 4. Group Utterances into 15s Windows.
+     * 5. Contextual analysis via LLM.
      */
     fun processSelectedVideo(uri: Uri) {
         viewModelScope.launch(Dispatchers.IO) {
             try {
+                // Pre-trigger model loading to parallelize with STT
+                val modelPath = File(getApplication<Application>().getExternalFilesDir(null), "gemma-4-E2B-it.litertlm").absolutePath
+                liteRTEngine.loadModel(modelPath)
+
                 // 1. Resolve URI
                 _uiState.value = UiState.Processing("Copying video to cache...")
                 val videoFile = fileResolver.resolveContentUri(uri)
                 currentVideoFile = videoFile
 
-                // 3. Transcription (Check for VTT Sidecar first, then fall back to STT)
+                // 3. Transcription
                 val baseName = videoFile.nameWithoutExtension
-                val assetVttName = "${baseName}_transcript.vtt"
-                
                 var utterances: List<SttUtterance> = emptyList()
                 
-                // Try VTT first (Demo Mode)
-                try {
-                    val vttFile = fileResolver.resolveAsset(assetVttName)
-                    _uiState.value = UiState.Processing("Using sidecar transcript...")
-                    utterances = VttParser.parse(vttFile.readText()).map { 
+                val localVtt = File(videoFile.parent, "${baseName}_transcript.vtt")
+                if (localVtt.exists()) {
+                    _uiState.value = UiState.Processing("Using local sidecar transcript...")
+                    utterances = VttParser.parse(localVtt.readText()).map { 
                         SttUtterance(it.startMs, it.endMs, it.text, 1.0f)
                     }
-                } catch (e: Exception) {
-                    // Fall back to live STT
+                } else {
                     _uiState.value = UiState.Processing("Extracting audio for STT...")
                     val audioFile = File(getApplication<Application>().cacheDir, "temp_audio.wav")
                     val extractSuccess = ffmpegWrapper.extractAudioForStt(videoFile, audioFile)
@@ -118,19 +103,25 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                     if (extractSuccess) {
                         _uiState.value = UiState.Processing("Transcribing audio (offline)...")
                         utterances = sttEngine.transcribe(audioFile.absolutePath)
+                        sttEngine.destroy() // Free memory for Gemma
                     }
                 }
 
                 if (utterances.isEmpty()) {
-                    throw Exception("No speech detected or transcription failed. Please ensure the video has clear audio and the app has microphone permissions.")
+                    throw Exception("No speech detected.")
                 }
 
-                // 4. Gemma Loop
+                // Group utterances into strict 15-second windows (RESTORED CONTEXT)
+                val chunks = TranscriptChunker.chunk(utterances)
+
+                // 4. Gemma Loop (CRITICAL: Every chunk must be analyzed)
                 val flaggedItems = mutableListOf<FlaggedItem>()
-                for ((index, utterance) in utterances.withIndex()) {
-                    _uiState.value = UiState.Processing("Analyzing chunk ${index + 1}/${utterances.size}", index + 1, utterances.size)
+                for ((index, chunk) in chunks.withIndex()) {
+                    val status = "Analyzing chunk ${index + 1}/${chunks.size}"
+                    _uiState.value = UiState.Processing(status, index + 1, chunks.size)
+                    Log.d(TAG, "$status: \"${chunk.text.take(30)}...\"")
                     
-                    val (pipedResult, metrics) = liteRTEngine.analyze(utterance.text)
+                    val (pipedResult, metrics) = liteRTEngine.analyze(chunk.text)
                     _inferenceMetrics.value = InferenceMetrics(
                         timeToFirstTokenMs = metrics.timeToFirstTokenMs,
                         totalInferenceTimeMs = metrics.totalInferenceTimeMs,
@@ -142,8 +133,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                     if (parsed != null) {
                         flaggedItems.add(
                             FlaggedItem(
-                                timestampStartMs = utterance.startMs,
-                                timestampEndMs = utterance.endMs,
+                                timestampStartMs = chunk.startMs,
+                                timestampEndMs = chunk.endMs,
                                 text = parsed.flaggedText,
                                 category = parsed.category,
                                 severity = parsed.severity,
@@ -152,6 +143,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                         )
                     }
                 }
+                Log.i(TAG, "Gemma Inference Complete. Total chunks processed: ${chunks.size}")
 
                 // 5. Present HITL
                 val profile = _selectedProfile.value

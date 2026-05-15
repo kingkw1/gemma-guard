@@ -18,6 +18,7 @@ import androidx.compose.ui.unit.dp
 import androidx.core.content.FileProvider
 import com.gemmaguard.app.ui.HitlDashboardScreen
 import com.gemmaguard.app.ui.MediaSelectionScreen
+import com.gemmaguard.app.ui.PerformanceOverlay
 import com.gemmaguard.app.viewmodels.MainViewModel
 import com.gemmaguard.app.viewmodels.UiState
 import java.io.File
@@ -34,6 +35,17 @@ class MainActivity : ComponentActivity() {
                     val state by viewModel.uiState.collectAsState()
                     val metrics by viewModel.inferenceMetrics.collectAsState()
                     
+                    // Handle Automated Test Intent (only if in ProfileSelection state)
+                    if (state is UiState.ProfileSelection) {
+                        intent?.getStringExtra("AUTO_VIDEO_PATH")?.let { path ->
+                            android.util.Log.i("GemmaGuard-Auto", "Auto-triggering pipeline for: $path")
+                            viewModel.selectProfile(viewModel.defaultProfiles.first())
+                            viewModel.processSelectedVideo(Uri.fromFile(File(path)))
+                            // Clear intent so it doesn't trigger again on config change
+                            intent.removeExtra("AUTO_VIDEO_PATH")
+                        }
+                    }
+
                     val pickerLauncher = rememberLauncherForActivityResult(
                         contract = ActivityResultContracts.OpenDocument(),
                         onResult = { uri ->
@@ -63,6 +75,12 @@ class MainActivity : ComponentActivity() {
                                         Text("${s.current} / ${s.total}", style = MaterialTheme.typography.labelSmall)
                                     }
                                 }
+                                // Added overlay here
+                                PerformanceOverlay(
+                                    metrics = metrics,
+                                    visible = true,
+                                    modifier = Modifier.align(Alignment.TopEnd).padding(16.dp)
+                                )
                             }
                         }
                         is UiState.HitlDashboard -> {
