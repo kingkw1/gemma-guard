@@ -12,6 +12,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import java.io.File
 
 sealed class UiState {
@@ -76,8 +77,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     fun processSelectedVideo(uri: Uri) {
         viewModelScope.launch(Dispatchers.IO) {
             try {
-                // Pre-trigger model loading to parallelize with STT
                 val modelPath = File(getApplication<Application>().getExternalFilesDir(null), "gemma-4-E2B-it.litertlm").absolutePath
+                // Pre-trigger model loading on background thread (prefers OpenCL on Adreno)
                 liteRTEngine.loadModel(modelPath)
 
                 // 1. Resolve URI
@@ -116,9 +117,14 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
                 // 4. Gemma Loop (CRITICAL: Every chunk must be analyzed)
                 val flaggedItems = mutableListOf<FlaggedItem>()
+                val profile = _selectedProfile.value
+                
+                // Initialize HitlDashboard state to start streaming
+                _uiState.value = UiState.HitlDashboard(emptyList(), videoFile.absolutePath)
+
                 for ((index, chunk) in chunks.withIndex()) {
                     val status = "Analyzing chunk ${index + 1}/${chunks.size}"
-                    _uiState.value = UiState.Processing(status, index + 1, chunks.size)
+                    // We don't overwrite HitlDashboard with Processing here, we let the UI handle the streaming state
                     Log.d(TAG, "$status: \"${chunk.text.take(30)}...\"")
                     
                     val (pipedResult, metrics) = liteRTEngine.analyze(chunk.text)
@@ -126,37 +132,42 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                         timeToFirstTokenMs = metrics.timeToFirstTokenMs,
                         totalInferenceTimeMs = metrics.totalInferenceTimeMs,
                         tokensPerSecond = metrics.tokensPerSecond,
-                        memoryUsageMb = metrics.memoryUsageMb
+                        memoryUsageMb = metrics.memoryUsageMb,
+                        currentChunkIndex = index + 1,
+                        totalChunks = chunks.size
                     )
 
                     val parsed = PipedStringParser.parse(pipedResult)
                     if (parsed != null) {
-                        flaggedItems.add(
-                            FlaggedItem(
-                                timestampStartMs = chunk.startMs,
-                                timestampEndMs = chunk.endMs,
-                                text = parsed.flaggedText,
-                                category = parsed.category,
-                                severity = parsed.severity,
-                                reasoning = PipedStringParser.generateReasoning(parsed)
-                            )
+                        val flaggedItem = FlaggedItem(
+                            timestampStartMs = chunk.startMs,
+                            timestampEndMs = chunk.endMs,
+                            text = parsed.flaggedText,
+                            category = parsed.category,
+                            severity = parsed.severity,
+                            reasoning = PipedStringParser.generateReasoning(parsed)
                         )
+                        flaggedItems.add(flaggedItem)
+                        
+                        // Determine if it should be cut based on profile
+                        val shouldCut = profile != null && (
+                            (flaggedItem.category == "Profanity" && flaggedItem.severity > profile.toleranceConfig.maxProfanitySeverity) ||
+                            (flaggedItem.category == "Violence" && flaggedItem.severity > profile.toleranceConfig.maxViolenceSeverity) ||
+                            (flaggedItem.category == "Thematic" && flaggedItem.severity > profile.toleranceConfig.maxThematicSeverity) ||
+                            (flaggedItem.category == "Mean Language" && profile.toleranceConfig.blockMeanLanguage)
+                        )
+                        
+                        val newHitlItem = HitlItem(flaggedItem, shouldCut)
+                        
+                        // Stream to UI immediately
+                        val currentState = _uiState.value
+                        if (currentState is UiState.HitlDashboard) {
+                            val updatedItems = currentState.items + newHitlItem
+                            _uiState.value = UiState.HitlDashboard(updatedItems, videoFile.absolutePath)
+                        }
                     }
                 }
                 Log.i(TAG, "Gemma Inference Complete. Total chunks processed: ${chunks.size}")
-
-                // 5. Present HITL
-                val profile = _selectedProfile.value
-                val hitlItems = flaggedItems.map { item ->
-                    val shouldCut = profile != null && (
-                        (item.category == "Profanity" && item.severity > profile.toleranceConfig.maxProfanitySeverity) ||
-                        (item.category == "Violence" && item.severity > profile.toleranceConfig.maxViolenceSeverity) ||
-                        (item.category == "Thematic" && item.severity > profile.toleranceConfig.maxThematicSeverity) ||
-                        (item.category == "Mean Language" && profile.toleranceConfig.blockMeanLanguage)
-                    )
-                    HitlItem(item, shouldCut)
-                }
-                _uiState.value = UiState.HitlDashboard(hitlItems, videoFile.absolutePath)
 
             } catch (e: Exception) {
                 Log.e(TAG, "Pipeline failed", e)

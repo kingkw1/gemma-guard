@@ -18,7 +18,9 @@ data class InferenceMetrics(
     val timeToFirstTokenMs: Long,
     val totalInferenceTimeMs: Long,
     val tokensPerSecond: Float,
-    val memoryUsageMb: Int
+    val memoryUsageMb: Int,
+    val currentChunkIndex: Int = 0,
+    val totalChunks: Int = 0
 )
 
 data class FlaggedItem(

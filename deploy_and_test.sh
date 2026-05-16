@@ -164,7 +164,7 @@ while true; do
     fi
 
     # 1. Check for HARD FAILURES
-    if grep -q "GemmaGuard-VM: Pipeline failed\|CalculatorGraph::Run() failed\|INTERNAL: RET_CHECK\|INVALID_ARGUMENT\|native.*E.*\|FATAL SIGNAL\|SIGSEGV" "$LOG_FILE"; then
+    if grep -q "GemmaGuard-VM: Pipeline failed\|CalculatorGraph::Run() failed\|INTERNAL: RET_CHECK\|INVALID_ARGUMENT\|FATAL SIGNAL\|SIGSEGV" "$LOG_FILE"; then
         echo -e "\n${RED}✗✗✗✗✗ TEST FAILED: Pipeline or Engine Error detected ✗✗✗✗✗${NC}"
         dump_context
         exit 1

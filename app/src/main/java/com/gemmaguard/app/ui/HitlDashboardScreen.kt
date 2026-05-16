@@ -131,9 +131,9 @@ fun PerformanceOverlay(
                 Column(modifier = Modifier.padding(12.dp)) {
                     Text("EDGE COMPUTE", style = MaterialTheme.typography.labelSmall, color = Color.Cyan, fontWeight = FontWeight.ExtraBold)
                     Spacer(modifier = Modifier.height(4.dp))
+                    MetricRow("Chunk", "${it.currentChunkIndex}/${it.totalChunks}")
                     MetricRow("Latency", "${it.totalInferenceTimeMs}ms")
                     MetricRow("Speed", "${"%.1f".format(it.tokensPerSecond)} t/s")
-                    MetricRow("RAM", "${it.memoryUsageMb}MB")
                 }
             }
         }

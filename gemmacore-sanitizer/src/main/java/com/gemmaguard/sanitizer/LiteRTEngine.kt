@@ -6,83 +6,87 @@ import com.google.mediapipe.tasks.genai.llminference.LlmInference
 import com.google.mediapipe.tasks.genai.llminference.LlmInferenceSession
 
 /**
- * Senior Optimized Inference Engine.
- * Balanced for contextual analysis while hitting sub-10s per-chunk latency.
+ * Senior Strategic Inference Engine.
+ * Optimized for strict instruction-following and stable CPU execution.
  */
 class LiteRTEngine(private val context: Context) {
     companion object {
         private const val TAG = "GemmaGuard-LiteRT"
         
         /**
-         * 48 tokens is the "Fast Lane" budget for S23 CPU.
-         * This satisfies the input budget for 2-sentence spliced chunks 
-         * while physically preventing long hallucination loops.
+         * 256 tokens as strictly requested. 
          */
-        private const val MAX_TOKENS = 48
+        private const val MAX_TOKENS = 256
     }
 
     private var llmInference: LlmInference? = null
+    private var session: LlmInferenceSession? = null
 
     fun loadModel(modelPath: String) {
         if (llmInference != null) return
         
         val options = LlmInference.LlmInferenceOptions.builder()
             .setModelPath(modelPath)
-            .setMaxTokens(MAX_TOKENS) // HARD-CAP for S23 CPU performance
+            .setMaxTokens(MAX_TOKENS)
             .setPreferredBackend(LlmInference.Backend.CPU)
             .build()
         
         llmInference = LlmInference.createFromOptions(context, options)
-        Log.d(TAG, "Model loaded on CPU. Hard-Cap: $MAX_TOKENS tokens.")
+        
+        val sessionOptions = LlmInferenceSession.LlmInferenceSessionOptions.builder()
+            .setTemperature(0.0f)
+            .setTopK(1)
+            .build()
+        
+        session = LlmInferenceSession.createFromOptions(llmInference!!, sessionOptions)
+        
+        Log.d(TAG, "Model loaded on CPU. Context-Budget: $MAX_TOKENS tokens.")
     }
 
+    /**
+     * Executes inference with strict structural priming.
+     */
     fun analyze(transcript: String): Pair<String, EngineMetrics> {
-        val llm = llmInference ?: throw IllegalStateException("Model not loaded")
+        val currentSession = session ?: throw IllegalStateException("Model not loaded")
 
-        // ULTRA-COMPRESSED CONTEXTUAL PROMPT
-        val prompt = "R? $transcript O:"
+        /**
+         * OFFICIAL GEMMA INSTRUCT PROMPT
+         * Restores control tokens as mandated.
+         */
+        val prompt = "<start_of_turn>user\n" +
+                "Extract risk. Format: word|category|severity. Or CLEAN.\n" +
+                "Ex: damn|Profanity|3\n" +
+                "Text: ${transcript.trim()}<end_of_turn>\n" +
+                "<start_of_turn>model\n"
 
-        Log.d(TAG, "Executing 48-token contextual inference...")
+        Log.d(TAG, "Full Prompt:\n$prompt")
+        Log.d(TAG, "Analyzing chunk (CPU Context-Aware)...")
         val startTime = System.currentTimeMillis()
         
         val rawResult = try {
-            val session = LlmInferenceSession.createFromOptions(
-                llm,
-                LlmInferenceSession.LlmInferenceSessionOptions.builder()
-                    .setTemperature(0.0f)
-                    .setTopK(1)
-                    .build()
-            )
-            try {
-                session.addQueryChunk(prompt)
-                session.generateResponse()
-            } finally {
-                session.close()
-            }
+            currentSession.addQueryChunk(prompt)
+            currentSession.generateResponse()
         } catch (e: Exception) {
             Log.e(TAG, "Inference fail", e)
             "CLEAN"
         }
         
+        Log.d(TAG, "Raw AI Result: \"$rawResult\"")
+        
         val endTime = System.currentTimeMillis()
         val totalTimeMs = endTime - startTime
 
-        // Fast extraction
-        var result = rawResult.trim()
-        if (result.contains("O:")) {
-            result = result.substringAfter("O:").trim()
-        }
+        // Extraction Logic: Identify generation and verify against transcript
+        val lines = rawResult.split("\n")
         
-        result = result
-            .substringBefore("<")
-            .lines()
-            .firstOrNull { it.isNotBlank() }
-            ?.trim() ?: "CLEAN"
-            
-        // Final logical mapping to satisfy the format requirement
-        if (transcript != "CLEAN" && !result.contains("|")) {
-            result = "$transcript|Profanity|3"
-        }
+        val result = lines.map { it.substringBefore("<").trim() }
+            .find { line ->
+                val parts = line.split("|")
+                parts.size == 3 && 
+                !line.contains("Format:") && 
+                !line.contains("Ex:") &&
+                transcript.contains(parts[0].trim(), ignoreCase = true)
+            } ?: "CLEAN"
 
         val metrics = EngineMetrics(
             timeToFirstTokenMs = totalTimeMs / 2, 
@@ -91,13 +95,15 @@ class LiteRTEngine(private val context: Context) {
             memoryUsageMb = 0
         )
 
-        Log.d(TAG, "analyze: \"$transcript\" -> \"$result\" (${totalTimeMs}ms)")
+        Log.d(TAG, "analyze: \"${transcript.take(30)}...\" -> \"$result\" (${totalTimeMs}ms)")
         return Pair(result, metrics)
     }
 
     fun destroy() {
+        session?.close()
         llmInference?.close()
         llmInference = null
+        session = null
     }
 }
 
@@ -105,5 +111,7 @@ data class EngineMetrics(
     val timeToFirstTokenMs: Long,
     val totalInferenceTimeMs: Long,
     val tokensPerSecond: Float,
-    val memoryUsageMb: Int
+    val memoryUsageMb: Int,
+    val currentChunkIndex: Int = 0,
+    val totalChunks: Int = 0
 )

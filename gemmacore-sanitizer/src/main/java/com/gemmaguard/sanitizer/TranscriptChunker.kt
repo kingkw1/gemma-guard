@@ -2,9 +2,7 @@ package com.gemmaguard.sanitizer
 
 /**
  * Senior Strategic Transcript Chunker.
- * Implements "Contextual Utterance Pairing".
- * Groups exactly 2 utterances at a time to provide enough context
- * for toxicity detection while fitting perfectly into the 32-token CPU hard-cap.
+ * Implements strict 15s windows with ZERO overlap for CPU efficiency.
  */
 object TranscriptChunker {
 
@@ -15,29 +13,35 @@ object TranscriptChunker {
     )
 
     /**
-     * Slices transcript into context-aware pairs.
+     * Slices transcript into strict 15-second windows.
+     * ZERO overlap. 120s video = exactly 8 chunks.
      */
     fun chunk(utterances: List<SttUtterance>): List<TranscriptChunk> {
         if (utterances.isEmpty()) return emptyList()
 
         val chunks = mutableListOf<TranscriptChunk>()
+        val maxEndTime = utterances.last().endMs
         
-        for (i in utterances.indices) {
-            val current = utterances[i]
-            val prev = if (i > 0) utterances[i - 1] else null
+        var startTime = 0L
+        while (startTime < maxEndTime) {
+            val endTime = startTime + 15000
             
-            // Limit text length to ensure it fits in 32 tokens
-            val text = if (prev != null) {
-                "${prev.text} ${current.text}"
-            } else {
-                current.text
+            // Find utterances that overlap with this strict window
+            val windowUtterances = utterances.filter { utterance ->
+                utterance.startMs < endTime && utterance.endMs >= startTime
             }
             
-            chunks.add(TranscriptChunk(
-                startMs = prev?.startMs ?: current.startMs,
-                endMs = current.endMs,
-                text = text.take(100) // Hardware-Safety Truncation
-            ))
+            if (windowUtterances.isNotEmpty()) {
+                val combinedText = windowUtterances.joinToString(" ") { it.text.trim() }
+                chunks.add(TranscriptChunk(
+                    startMs = startTime,
+                    endMs = endTime,
+                    text = combinedText
+                ))
+            }
+            
+            // Step by exactly 15s for zero overlap
+            startTime += 15000 
         }
 
         return chunks

@@ -35,7 +35,7 @@ android {
 dependencies {
     implementation(libs.androidx.core.ktx)
     implementation(libs.kotlinx.coroutines.android)
-    implementation("com.google.mediapipe:tasks-genai:latest.release")
+    implementation("com.google.mediapipe:tasks-genai:0.10.33")
 
     // FFmpeg-Kit (antonkarpenko fork)
     api("com.antonkarpenko:ffmpeg-kit-full:2.1.0")

@@ -1,0 +1,24 @@
+--------- beginning of main
+05-15 17:49:16.195 32353 32673 D GemmaGuard-LiteRT: Raw AI Result: "Extract risk. Format: word|category|severity. Or CLEAN.
+05-15 17:49:16.195 32353 32673 D GemmaGuard-LiteRT: Ex: damn|Profanity|3
+05-15 17:49:16.195 32353 32673 D GemmaGuard-LiteRT: Text: let s go okay bonnie are you point four million bad just go find about them is mac
+05-15 17:49:16.195 32353 32673 D GemmaGuard-LiteRT: <end_of_turn>
+05-15 17:49:16.195 32353 32673 D GemmaGuard-LiteRT: model
+05-15 17:49:16.195 32353 32673 D GemmaGuard-LiteRT: let s go okay bonnie are you point four million bad just go find about them is mac
+05-15 17:49:16.195 32353 32673 D GemmaGuard-LiteRT: ---
+05-15 17:49:16.195 32353 32673 D GemmaGuard-LiteRT: <eos><eos><|channel>thought
+05-15 17:49:16.195 32353 32673 D GemmaGuard-LiteRT: Thinking Process:
+05-15 17:49:16.195 32353 32673 D GemmaGuard-LiteRT: 
+05-15 17:49:16.195 32353 32673 D GemmaGuard-LiteRT: 1.  **Analyze the Request:** The user wants me to extract "risk" from the provided text, formatted as `word|category|severity` or `CLEAN`.
+05-15 17:49:16.195 32353 32673 D GemmaGuard-LiteRT: 2.  **Analyze the Input Text:** "let s go okay bonnie are you point four million bad just go find about them is mac"
+05-15 17:49:16.195 32353 32673 D GemmaGuard-LiteRT: 3.  **Determine the Goal (Risk Extraction):** I need to scan the text for anything that constitutes a risk (threat, danger,"
+05-15 17:49:16.196 32353 32673 D GemmaGuard-LiteRT: analyze: "let's go okay bonnie are you p..." -> "CLEAN" (64842ms)
+05-15 17:49:16.197 32353 32673 D GemmaGuard-LiteRT: Full Prompt:
+05-15 17:49:16.197 32353 32673 D GemmaGuard-LiteRT: <start_of_turn>user
+05-15 17:49:16.197 32353 32673 D GemmaGuard-LiteRT: Extract risk. Format: word|category|severity. Or CLEAN.
+05-15 17:49:16.197 32353 32673 D GemmaGuard-LiteRT: Ex: damn|Profanity|3
+05-15 17:49:16.197 32353 32673 D GemmaGuard-LiteRT: Text: point four million bad just go find about them is mac ha ha i don t remember those being your sister s name is not their names and the names changed what for to live like this or did do something stupid like social media thing i honor i just a regular killing on it<end_of_turn>
+05-15 17:49:16.197 32353 32673 D GemmaGuard-LiteRT: <start_of_turn>model
+05-15 17:49:16.197 32353 32673 D GemmaGuard-LiteRT: Analyzing chunk (CPU Context-Aware)...
+05-15 17:49:39.255  2931  2949 I GpuSmokeTest: Testing fixed model path: /storage/emulated/0/Android/data/com.gemmaguard.app/files/gemma-4-E2B-it.litertlm
+05-15 17:49:39.257  2931  2949 E GpuSmokeTest: Model missing at /storage/emulated/0/Android/data/com.gemmaguard.app/files/gemma-4-E2B-it.litertlm
